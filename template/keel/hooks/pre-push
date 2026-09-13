@@ -1,0 +1,56 @@
+#!/bin/sh
+# Keel pre-push: audit entry + STATE.md for audited branches, Gate 2 for protected, checks everywhere.
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+ROOT=$(git rev-parse --show-toplevel)
+. "$ROOT/keel/config.sh"
+REMOTE_NAME=$1
+ZERO=0000000000000000000000000000000000000000
+FAIL=0
+
+in_list() { for x in $2; do [ "$1" = "$x" ] && return 0; done; return 1; }
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue   # deleting a branch
+  branch=${remote_ref#refs/heads/}
+
+  # Files touched by the commits being pushed. For a branch that is new on the
+  # remote, take every local commit not already on any of that remote's refs.
+  if [ "$remote_sha" = "$ZERO" ]; then
+    range="$local_sha (not yet on $REMOTE_NAME)"
+    CHANGED=$(git log --name-only --pretty=format: "$local_sha" --not --remotes="$REMOTE_NAME" 2>/dev/null)
+  else
+    range="$remote_sha..$local_sha"
+    CHANGED=$(git log --name-only --pretty=format: "$range" 2>/dev/null)
+  fi
+
+  if in_list "$branch" "$KEEL_AUDITED_BRANCHES"; then
+    if ! printf '%s\n' "$CHANGED" | grep -q '^keel/audits/AUDIT-LOG.md$'; then
+      echo "keel: push to '$branch' has no new entry in keel/audits/AUDIT-LOG.md in $range" >&2; FAIL=1
+    fi
+    if ! printf '%s\n' "$CHANGED" | grep -q '^keel/STATE.md$'; then
+      echo "keel: push to '$branch' does not update keel/STATE.md in $range" >&2; FAIL=1
+    fi
+    LAST=$(awk '/^## A-/{b=""} {b=b $0 "\n"} END{printf "%s", b}' "$ROOT/keel/audits/AUDIT-LOG.md")
+    if ! printf '%s' "$LAST" | grep -q "^Branch: $branch"; then
+      echo "keel: last audit entry is not for branch '$branch'" >&2; FAIL=1
+    fi
+    if in_list "$branch" "$KEEL_PROTECTED_BRANCHES"; then
+      if ! printf '%s' "$LAST" | grep -qE '^Gate 2: PROCEED'; then
+        echo "keel: '$branch' is protected and the last audit entry lacks 'Gate 2: PROCEED'" >&2; FAIL=1
+      fi
+    fi
+  fi
+done
+
+[ "$FAIL" = "1" ] && exit 1
+
+for c in "$KEEL_CHECK_1" "$KEEL_CHECK_2" "$KEEL_CHECK_3"; do
+  [ -z "$c" ] && continue
+  echo "keel: running: $c"
+  if ! sh -c "$c"; then
+    echo "keel: check failed: $c" >&2
+    exit 1
+  fi
+done
+
+exit 0

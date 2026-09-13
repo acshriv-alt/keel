@@ -1,0 +1,41 @@
+# Optional GitHub Action. Copy to .github/workflows/keel-check.yml in your repo.
+#
+# Mirrors the pre-push hook for pull requests into protected branches, so the
+# gate holds even when someone pushes with --no-verify or from a machine
+# without the hooks. Adjust the branch list to match KEEL_PROTECTED_BRANCHES.
+
+name: keel-check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  keel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Audit entry and STATE.md present in this PR
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD")
+          echo "$CHANGED" | grep -q '^keel/audits/AUDIT-LOG.md$' || { echo "keel: no new audit entry in this PR"; exit 1; }
+          echo "$CHANGED" | grep -q '^keel/STATE.md$' || { echo "keel: keel/STATE.md not updated in this PR"; exit 1; }
+
+      - name: Last audit entry targets this branch with Gate 2 PROCEED
+        run: |
+          BRANCH="${{ github.event.pull_request.base.ref }}"
+          LAST=$(awk '/^## A-/{b=""} {b=b $0 "\n"} END{printf "%s", b}' keel/audits/AUDIT-LOG.md)
+          printf '%s' "$LAST" | grep -q "^Branch: $BRANCH" || { echo "keel: last audit entry is not for $BRANCH"; exit 1; }
+          printf '%s' "$LAST" | grep -qE '^Gate 2: PROCEED' || { echo "keel: last audit entry lacks 'Gate 2: PROCEED'"; exit 1; }
+
+      - name: Commit tags present
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          BAD=$(git log --format='%h %s' "$BASE..$HEAD" | grep -vE '\[(F-[0-9]{4}|fix|hotfix|chore|docs|keel)\]' || true)
+          if [ -n "$BAD" ]; then echo "keel: untagged commits:"; echo "$BAD"; exit 1; fi
