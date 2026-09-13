@@ -112,6 +112,5 @@ The template files in this repository are LF.
 `KEEL_BOOTSTRAP.md` is the source; `template/` is extracted from its fenced
 blocks. Any block that follows a line consisting only of a backticked path
 (or a `### 3.x \`path\`` heading) is written to that path. If you edit the
-bootstrap, re-extract so the two never drift. The extractor used for 1.0 is
-a 25-line awk script; a maintainer can find it in the git history of this
-file's first commit or rewrite it from that description.
+bootstrap, run `sh tools/extract-template.sh` and check `git diff --stat template/`
+is empty unless the change was intended.

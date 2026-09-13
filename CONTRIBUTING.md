@@ -9,8 +9,8 @@ about how projects should work, so it needs a reason that survives a Skeptic.
 2. Open an issue describing the problem a real project hit. Not the solution.
 3. If it touches the hooks, run the smoke test in `docs/HOOKS.md` and paste
    the output in the PR.
-4. If it touches `KEEL_BOOTSTRAP.md`, regenerate `template/` from it (the
-   extractor is described in `docs/HOOKS.md`) so the two never drift.
+4. If it touches `KEEL_BOOTSTRAP.md`, run `sh tools/extract-template.sh` so
+   `template/` never drifts, and commit both.
 
 ## Rules for the repository itself
 
