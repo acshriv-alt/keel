@@ -1,6 +1,6 @@
 # Running the council well
 
-The protocol is in `template/keel/council/COUNCIL.md` and lands in every
+The protocol is in `template/scantling/council/COUNCIL.md` and lands in every
 repo. This document is about doing it well.
 
 ## What the council is for
@@ -27,6 +27,16 @@ The difference: a file, a step, a number, an ID.
 Play the voices in order. Between voices, actually re-read the persona file.
 The frame shift is the point; an agent that writes all five in one pass
 produces one voice with five headings.
+
+**Before any voice speaks**, one agent writes `EVIDENCE.md` in the feature
+folder: every line a command and what it printed, no judgement. The voices
+reason over that sheet plus the brief, and do not open the repository. A voice
+that needs a missing fact writes `Evidence gap: <question>, answerable by
+<command>`; the chair runs it once, appends the answer, and reruns the voices.
+
+What the council costs is set by the tier the change declares:
+`trivial` buys nothing, `standard` buys a solo pass (one agent, five voices in
+sequence), `critical` buys the full parallel form. See [TIERS.md](TIERS.md).
 
 Respect the caps: 150 words per voice, 200 for the chair. Under-length and
 specific beats full-length and vague.
@@ -62,7 +72,7 @@ the one that appears twice or worries them most and adds a required change
 or a scenario for it. This question finds failures the mandatory questions
 miss because it inverts the frame from "will it work" to "how did it break".
 
-## Reality check rule
+## Reality check rule (at the merge gate)
 
 For any brief estimating more than two days of work, the chair cannot write
 PROCEED until the brief quotes one real person matching the persona. One

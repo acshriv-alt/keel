@@ -2,7 +2,7 @@
 
 ## Session protocol
 
-**Open**: read `KEEL.md`, `keel/STATE.md`, and every file in the in-flight
+**Open**: read `SCANTLING.md`, `scantling/STATE.md`, and every file in the in-flight
 feature folder. Ten lines back to the owner: where we are, what is next, what
 is blocked, which gate the feature is at. Ask nothing unless `STATE.md` is
 more than seven days old.
@@ -14,17 +14,17 @@ only in the chat does not exist by the next session.
 into `BACKLOG.md` with an ID, date and source. List decisions made this
 session that were not recorded, and record them.
 
-With Claude Code: `/keel-session open` and `/keel-session close`.
+With Claude Code: `/scantling-session open` and `/scantling-session close`.
 
 ## Feature lifecycle
 
 ### Intake (10 minutes, no code)
 
 1. Idea in one sentence.
-2. Grep `keel/decisions/INDEX.md`, `keel/knowledge/REJECTED.md`,
-   `keel/BACKLOG.md`. Quote hits with IDs.
+2. Grep `scantling/decisions/INDEX.md`, `scantling/knowledge/REJECTED.md`,
+   `scantling/BACKLOG.md`. Quote hits with IDs.
 3. Pick a persona from `PERSONAS.md`. If none fits, write one first.
-4. Create `keel/features/F-xxxx-slug/BRIEF.md` from the template. The "one
+4. Create `scantling/features/F-xxxx-slug/BRIEF.md` from the template. The "one
    scenario" section is the test: if it cannot be written in the persona's
    words, the feature is not ready.
 5. Add assumptions to `ASSUMPTIONS.md` and reference them by ID.
@@ -37,7 +37,9 @@ them. Only then write code.
 
 ### Build
 
-1. Add scenario stubs to `SCENARIOS.md`, `Status: untested`.
+1. Add scenario stubs to the area file `scantling/scenarios/areas/AREA.md`,
+   `Status: untested`. If the code path matches no area, add its pattern to
+   `scantling/scenarios/AREAS.map` and a coverage map row to `SCENARIOS.md` first.
 2. Code. Small commits, every message tagged `[F-xxxx]`.
 3. When a scenario is actually exercised, update its status with date and
    method: manual on a named device, automated test, or careful reasoning.
@@ -54,11 +56,11 @@ Write `COUNCIL-2.md`. Fix required changes, tick them.
 1. Rewrite `STATE.md`.
 2. Run the configured checks and any build. Capture the lines that matter.
 3. Append the audit entry to `AUDIT-LOG.md`.
-4. Commit `[keel] audit A-xxxx for F-xxxx`.
+4. Commit `[scantling] audit A-xxxx for F-xxxx`.
 5. Stop. Show the owner the entry. Push only on explicit approval for this
    push. An earlier "go ahead" does not carry over.
 
-With Claude Code: `/keel-audit`.
+With Claude Code: `/scantling-audit`.
 
 ### Outcome review (+14 days after production)
 
@@ -69,11 +71,11 @@ add `R-` entries for approaches not to repeat, update `BACKLOG.md`.
 ## Bug fixes
 
 `[fix]`: no Gate 1. Scenario required. Audit entry required on audited
-branches. Gate 2 required when the fix touches `KEEL_CRITICAL_PATTERN`
+branches. Gate 2 required when the fix touches `SCANTLING_CRITICAL_PATTERN`
 (auth, payments, data model, background jobs, whatever the project lists).
 
 `[hotfix]` on production: same, plus an `INC-` file within 24 hours using
-`keel/templates/INCIDENT.md`. The "Why it was not caught" section names the
+`scantling/templates/INCIDENT.md`. The "Why it was not caught" section names the
 missing scenario or the skipped council question and adds them.
 
 ## Brainstorming sessions (owner and agent, no code)
@@ -111,11 +113,11 @@ What makes this accurate to the real world rather than to the chat:
 | `[hotfix]` | production fix | scenario + incident file within 24 h |
 | `[chore]` | dependencies, tooling, refactor with no behaviour change | scenario or waiver |
 | `[docs]` | documentation only | nothing |
-| `[keel]` | Keel's own files: state, audit, decisions | nothing |
+| `[scantling]` | Scantling's own files: state, audit, decisions | nothing |
 
 ## Waivers
 
-`KEEL_WAIVE_SCENARIOS=1 git commit -m "[chore] bump deps" -m "Waiver: no behaviour change, lockfile only"`
+`SCANTLING_WAIVE_SCENARIOS=1 git commit -m "[chore] bump deps" -m "Waiver: no behaviour change, lockfile only"`
 
 The env var lets pre-commit pass; commit-msg then insists on a `Waiver:`
 line of at least ten characters. The waiver is in the commit, so it is in

@@ -1,0 +1,93 @@
+#!/bin/sh
+# Scantling pre-push: audit entry + STATE.md for audited branches, Gate 2 for protected, checks everywhere.
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+ROOT=$(git rev-parse --show-toplevel)
+. "$ROOT/scantling/config.sh"
+REMOTE_NAME=$1
+ZERO=0000000000000000000000000000000000000000
+FAIL=0
+
+# Advisory only: tell the repo when its config and its hooks disagree about
+# which Scantling this is. There is no network call and nothing to check
+# against upstream; this only catches a half-finished migration in this repo.
+SCANTLING_HOOKS_VERSION=2.0.0
+if [ -z "$SCANTLING_VERSION" ]; then
+  echo "scantling: config.sh sets no SCANTLING_VERSION. This looks like a Keel 1.0" >&2
+  echo "scantling: config running under 2.0 hooks. See section 11 of the bootstrap," >&2
+  echo "scantling: or run tools/migrate-from-keel.sh from the Scantling repository." >&2
+elif [ "$SCANTLING_VERSION" != "$SCANTLING_HOOKS_VERSION" ]; then
+  echo "scantling: config says $SCANTLING_VERSION, hooks say $SCANTLING_HOOKS_VERSION." >&2
+  echo "scantling: finish the upgrade, or correct SCANTLING_VERSION if it is stale." >&2
+fi
+
+in_list() { for x in $2; do [ "$1" = "$x" ] && return 0; done; return 1; }
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue   # deleting a branch
+  branch=${remote_ref#refs/heads/}
+
+  # Files touched by the commits being pushed. For a branch that is new on the
+  # remote, take every local commit not already on any of that remote's refs.
+  if [ "$remote_sha" = "$ZERO" ]; then
+    range="$local_sha (not yet on $REMOTE_NAME)"
+    CHANGED=$(git log --name-only --pretty=format: "$local_sha" --not --remotes="$REMOTE_NAME" 2>/dev/null)
+  else
+    range="$remote_sha..$local_sha"
+    CHANGED=$(git log --name-only --pretty=format: "$range" 2>/dev/null)
+  fi
+
+  if in_list "$branch" "$SCANTLING_AUDITED_BRANCHES"; then
+    if ! printf '%s\n' "$CHANGED" | grep -q '^scantling/audits/AUDIT-LOG.md$'; then
+      echo "scantling: push to '$branch' has no new entry in scantling/audits/AUDIT-LOG.md in $range" >&2; FAIL=1
+    fi
+    if ! printf '%s\n' "$CHANGED" | grep -q '^scantling/STATE.md$'; then
+      echo "scantling: push to '$branch' does not update scantling/STATE.md in $range" >&2; FAIL=1
+    fi
+    LAST=$(awk '/^## A-/{b=""} {b=b $0 "\n"} END{printf "%s", b}' "$ROOT/scantling/audits/AUDIT-LOG.md")
+    if ! printf '%s' "$LAST" | grep -q "^Branch: $branch"; then
+      echo "scantling: last audit entry is not for branch '$branch'" >&2; FAIL=1
+    fi
+    if in_list "$branch" "$SCANTLING_PROTECTED_BRANCHES"; then
+      if ! printf '%s' "$LAST" | grep -qE '^Gate 2: PROCEED'; then
+        echo "scantling: '$branch' is protected and the last audit entry lacks 'Gate 2: PROCEED'" >&2; FAIL=1
+      fi
+      # The reality check binds here, at the moment the work reaches users,
+      # not at Gate 1 where it only ever produced waivers.
+      if ! printf '%s' "$LAST" | grep -qE '^Reality-check: .{10,}'; then
+        echo "scantling: '$branch' is protected and the last audit entry has no 'Reality-check:' line." >&2
+        echo "scantling: quote the real person who was asked, or write" >&2
+        echo "scantling:   Reality-check: waived: <reason> (AS-xxx)" >&2
+        echo "scantling: a waiver writes an assumption and may not cite an earlier waiver." >&2
+        FAIL=1
+      fi
+    fi
+  fi
+done
+
+# Append-only is about integrity, not about one file growing forever.
+if [ "${SCANTLING_AUDIT_MAX_ENTRIES:-0}" -gt 0 ]; then
+  ENTRIES=$(grep -c '^## A-' "$ROOT/scantling/audits/AUDIT-LOG.md" 2>/dev/null)
+  [ -z "$ENTRIES" ] && ENTRIES=0
+  if [ "$ENTRIES" -gt "$SCANTLING_AUDIT_MAX_ENTRIES" ]; then
+    echo "scantling: AUDIT-LOG.md holds $ENTRIES entries, max is $SCANTLING_AUDIT_MAX_ENTRIES." >&2
+    echo "scantling: move the shipped ones unchanged into scantling/audits/archive/AUDIT-LOG-<version>.md" >&2
+    echo "scantling: and leave a pointer line under '## Archived'. Nothing is edited or deleted." >&2
+    FAIL=1
+  fi
+fi
+
+[ "$FAIL" = "1" ] && exit 1
+
+for c in "$SCANTLING_CHECK_1" "$SCANTLING_CHECK_2" "$SCANTLING_CHECK_3"; do
+  [ -z "$c" ] && continue
+  echo "scantling: running: $c"
+  if ! sh -c "$c"; then
+    echo "scantling: check failed: $c" >&2
+    exit 1
+  fi
+done
+
+# Advisory, never blocking: Scantling's own drag gauge.
+[ -f "$ROOT/scantling/tools/ratio.sh" ] && sh "$ROOT/scantling/tools/ratio.sh" 2>/dev/null
+
+exit 0

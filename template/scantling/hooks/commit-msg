@@ -1,0 +1,135 @@
+#!/bin/sh
+# Scantling commit-msg: tag and risk tier required. The declared tier decides what
+# else is required. A tier below the path-implied floor needs a reason on the
+# record, because a claim can be audited later and an inference cannot.
+ROOT=$(git rev-parse --show-toplevel)
+. "$ROOT/scantling/config.sh"
+MSG=$(sed -e '/^#/d' "$1")
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+rank() {
+  case "$1" in
+    trivial)  echo 0 ;;
+    standard) echo 1 ;;
+    critical) echo 2 ;;
+    *)        echo -1 ;;
+  esac
+}
+
+# 1. Tag.
+TAG=$(printf '%s\n' "$MSG" | grep -oE '\[(F-[0-9]{4}|fix|hotfix|chore|docs|scantling)\]' | head -1)
+if [ -z "$TAG" ]; then
+  echo "scantling: commit message needs a tag: [F-0001] [fix] [hotfix] [chore] [docs] [scantling]" >&2
+  exit 1
+fi
+
+# 2. Tier floor from paths, then the declared tier.
+FLOOR=trivial
+printf '%s\n' "$STAGED" | grep -qE "$SCANTLING_CODE_PATTERN"     && FLOOR=standard
+printf '%s\n' "$STAGED" | grep -qE "$SCANTLING_CRITICAL_PATTERN" && FLOOR=critical
+
+TIER=$(printf '%s\n' "$MSG" | sed -n 's/^Tier:[ ]*\([a-z][a-z]*\).*/\1/p' | head -1)
+if [ -z "$TIER" ]; then
+  if [ "$FLOOR" = "trivial" ]; then
+    TIER=${SCANTLING_DEFAULT_TIER:-trivial}
+  else
+    echo "scantling: this commit touches $FLOOR paths and declares no tier." >&2
+    echo "scantling: add a line to the commit body:" >&2
+    echo "scantling:   Tier: trivial | standard | critical" >&2
+    echo "scantling: the tier is the blast radius, not the diff size. See SCANTLING.md rule 3." >&2
+    exit 1
+  fi
+fi
+if [ "$(rank "$TIER")" -lt 0 ]; then
+  echo "scantling: 'Tier: $TIER' is not one of trivial, standard, critical." >&2
+  exit 1
+fi
+
+# 3. Downgrades below the floor are allowed, but must carry their evidence.
+if [ "$(rank "$TIER")" -lt "$(rank "$FLOOR")" ]; then
+  if [ "$SCANTLING_ALLOW_TIER_DOWNGRADE" != "1" ]; then
+    echo "scantling: paths here imply tier $FLOOR and SCANTLING_ALLOW_TIER_DOWNGRADE is 0." >&2
+    exit 1
+  fi
+  if ! printf '%s\n' "$MSG" | grep -qE '^Tier-reason: .{20,}'; then
+    echo "scantling: tier $TIER is below the path-implied floor $FLOOR." >&2
+    echo "scantling: that is allowed, and it costs one line of evidence:" >&2
+    echo "scantling:   Tier-reason: drops donor_import_tmp; grep -rn donor_import_tmp app lib -> 0 hits" >&2
+    exit 1
+  fi
+fi
+
+# 4. Features need a brief always, and a Gate 1 verdict at standard and above.
+case "$TAG" in
+  \[F-*)
+    ID=$(printf '%s' "$TAG" | tr -d '[]')
+    DIR=$(ls -d "$ROOT"/scantling/features/"$ID"* 2>/dev/null | head -1)
+    if [ -z "$DIR" ] || [ ! -f "$DIR/BRIEF.md" ]; then
+      echo "scantling: no scantling/features/$ID-*/BRIEF.md. Write the brief first." >&2
+      exit 1
+    fi
+    if [ "$(rank "$TIER")" -ge 1 ]; then
+      if ! grep -qE '^Verdict: PROCEED' "$DIR/COUNCIL-1.md" 2>/dev/null; then
+        echo "scantling: $ID is tier $TIER and has no 'Verdict: PROCEED' in COUNCIL-1.md." >&2
+        echo "scantling: run Gate 1 (solo form at standard, full at critical)." >&2
+        exit 1
+      fi
+      if [ ! -f "$DIR/EVIDENCE.md" ]; then
+        echo "scantling: $ID has a verdict but no EVIDENCE.md. The voices must reason" >&2
+        echo "scantling: over a written evidence pass, not over the repository." >&2
+        exit 1
+      fi
+    fi
+    ;;
+esac
+
+# 5. Scenario coverage, by area, at tier standard and above.
+if [ "$(rank "$TIER")" -ge 1 ] && printf '%s\n' "$STAGED" | grep -qE "$SCANTLING_CODE_PATTERN"; then
+  MISSING=""
+  MAPPED=0
+  if [ -f "$ROOT/scantling/scenarios/AREAS.map" ]; then
+    while read -r area pattern; do
+      [ -z "$area" ] && continue
+      case "$area" in \#*) continue ;; esac
+      [ -z "$pattern" ] && continue
+      if printf '%s\n' "$STAGED" | grep -qE "$pattern"; then
+        MAPPED=1
+        if ! printf '%s\n' "$STAGED" | grep -q "^scantling/scenarios/areas/$area\.md$"; then
+          MISSING="$MISSING scantling/scenarios/areas/$area.md"
+        fi
+      fi
+    done < "$ROOT/scantling/scenarios/AREAS.map"
+  fi
+  UNMAPPED=0
+  if [ "$MAPPED" = "0" ] && ! printf '%s\n' "$STAGED" | grep -q '^scantling/scenarios/SCENARIOS.md$'; then
+    MISSING="$MISSING scantling/scenarios/SCENARIOS.md"
+    UNMAPPED=1
+  fi
+  if [ -n "$MISSING" ] && [ "$SCANTLING_WAIVE_SCENARIOS" != "1" ]; then
+    echo "scantling: tier $TIER code change with no scenario staged. Expected:" >&2
+    for m in $MISSING; do echo "scantling:   $m" >&2; done
+    if [ "$UNMAPPED" = "1" ]; then
+      echo "scantling: this code path matches no area in scantling/scenarios/AREAS.map." >&2
+      echo "scantling: add the pattern there and a coverage map row in SCENARIOS.md." >&2
+    fi
+    echo "scantling: write the scenario, or declare 'Tier: trivial' with a Tier-reason," >&2
+    echo "scantling: or waive: SCANTLING_WAIVE_SCENARIOS=1 git commit ... plus a 'Waiver: <reason>' line." >&2
+    exit 1
+  fi
+fi
+
+if [ "$SCANTLING_WAIVE_SCENARIOS" = "1" ]; then
+  if ! printf '%s\n' "$MSG" | grep -qE '^Waiver: .{10,}'; then
+    echo "scantling: scenario waiver used but no 'Waiver: <reason>' line (10+ chars) in the commit body." >&2
+    exit 1
+  fi
+fi
+
+if [ "$SCANTLING_FORBID_EMDASH" = "1" ]; then
+  if printf '%s\n' "$MSG" | grep -q "$(printf '\342\200\224')"; then
+    echo "scantling: em dash in commit message." >&2
+    exit 1
+  fi
+fi
+
+exit 0

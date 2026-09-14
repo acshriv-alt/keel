@@ -1,0 +1,6 @@
+---
+name: scantling-session
+description: Open or close a Scantling session. "open" reads SCANTLING.md, STATE.md and the in-flight feature and summarises in ten lines. "close" rewrites STATE.md, files unfinished findings into BACKLOG.md, and lists decisions made this session that are not yet recorded. Use at the start and end of work, or /scantling-session open|close.
+---
+open: read SCANTLING.md, scantling/STATE.md, and only the CURRENT gate file of the in-flight feature, not the whole folder. Closed gates are history: open one only if the work in front of you turns on what it said. Report in at most ten lines: where we are, what is next, what is blocked, which gate the feature is at and its declared tier. Ask nothing unless STATE.md is stale by more than seven days.
+close: scan the conversation for choices made and not recorded; run /scantling-decide for each or list them for the user. Move any bug or gap found but not fixed into scantling/BACKLOG.md with an ID, date and source. Rewrite scantling/STATE.md completely, inside SCANTLING_STATE_MAX_WORDS; if it does not fit, the surplus is history and belongs in the audit log or the feature folder, not in STATE.md. Do not commit unless asked.

@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.sh text eol=lf
-template/keel/hooks/* text eol=lf
+template/scantling/hooks/* text eol=lf
+template/scantling/tools/* text eol=lf
+template/scantling/scenarios/AREAS.map text eol=lf

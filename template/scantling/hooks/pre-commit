@@ -1,0 +1,52 @@
+#!/bin/sh
+# Scantling pre-commit: forbidden patterns, archived files, STATE.md cap.
+# Scenario coverage moved to commit-msg in 1.1: it depends on the declared
+# tier, and the tier lives in the commit message, which pre-commit cannot see.
+ROOT=$(git rev-parse --show-toplevel)
+. "$ROOT/scantling/config.sh"
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$STAGED" ] && exit 0
+
+# 1. Em dash in added lines.
+if [ "$SCANTLING_FORBID_EMDASH" = "1" ]; then
+  EMDASH=$(printf '\342\200\224')
+  if git diff --cached -U0 -- . ':(exclude)*.png' ':(exclude)*.jpg' ':(exclude)*.ico' | grep '^+' | grep -v '^+++' | grep -q "$EMDASH"; then
+    echo "scantling: em dash (U+2014) found in added lines. Use a hyphen, colon or comma." >&2
+    git diff --cached -U0 | grep -n '^+' | grep "$EMDASH" | head -5 >&2
+    exit 1
+  fi
+fi
+
+# 2. Archived files are never edited. One system of record.
+# SCANTLING_ARCHIVE_STAMP=1 is the one exception: the commit that stamps the
+# banner and freezes the file must be able to touch it. Nothing after that.
+if [ -n "$SCANTLING_ARCHIVED_PATTERN" ] && [ "$SCANTLING_ARCHIVE_STAMP" != "1" ]; then
+  HITS=$(printf '%s\n' "$STAGED" | grep -E "$SCANTLING_ARCHIVED_PATTERN")
+  if [ -n "$HITS" ]; then
+    echo "scantling: these files are dated archives, superseded by scantling/:" >&2
+    printf '%s\n' "$HITS" | sed 's/^/scantling:   /' >&2
+    echo "scantling: write the fact in scantling/ instead. See scantling/knowledge/SOURCES.md." >&2
+    echo "scantling: to un-archive a file, change SCANTLING_ARCHIVED_PATTERN with a D- record." >&2
+    exit 1
+  fi
+fi
+
+# 3. STATE.md word cap. The cap is the mechanism that keeps it rewritten.
+if [ "${SCANTLING_STATE_MAX_WORDS:-0}" -gt 0 ] && printf '%s\n' "$STAGED" | grep -q '^scantling/STATE.md$'; then
+  WORDS=$(git show :scantling/STATE.md 2>/dev/null | wc -w | tr -d ' ')
+  if [ -n "$WORDS" ] && [ "$WORDS" -gt "$SCANTLING_STATE_MAX_WORDS" ]; then
+    echo "scantling: scantling/STATE.md is $WORDS words, cap is $SCANTLING_STATE_MAX_WORDS." >&2
+    echo "scantling: STATE.md is rewritten every session, not grown. The surplus is history:" >&2
+    echo "scantling: it belongs in the audit log, the feature folder or a D- record." >&2
+    exit 1
+  fi
+fi
+
+# 4. Critical path touched: advisory, since the commit body decides the tier.
+if printf '%s\n' "$STAGED" | grep -qE "$SCANTLING_CRITICAL_PATTERN"; then
+  echo "scantling: note: critical path touched, so this commit needs a 'Tier:' line." >&2
+  echo "scantling: commit-msg checks it. Tier: critical unless you can justify lower." >&2
+fi
+
+exit 0

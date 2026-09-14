@@ -1,24 +1,24 @@
-# Installing Keel
+# Installing Scantling
 
 Takes about ten minutes to install and thirty to seed. Skip the seeding and
 you have a form nobody fills in.
 
 ## Path 1: agent install
 
-1. Copy `KEEL_BOOTSTRAP.md` into the target repository root, or paste its
+1. Copy `SCANTLING_BOOTSTRAP.md` into the target repository root, or paste its
    content as the first message.
 2. Tell the agent:
-   > Install Keel following KEEL_BOOTSTRAP.md. Stop after the install commit.
+   > Install Scantling following SCANTLING_BOOTSTRAP.md. Stop after the install commit.
 3. The agent creates every file, installs the hooks, appends the pointer line
    to your existing agent instruction file, and asks you for seed facts.
-4. Review the commit. Delete `KEEL_BOOTSTRAP.md` from the repo if you copied
-   it there; the repo's own `KEEL.md` is now the entry point.
+4. Review the commit. Delete `SCANTLING_BOOTSTRAP.md` from the repo if you copied
+   it there; the repo's own `SCANTLING.md` is now the entry point.
 
 ## Path 2: installer script
 
 ```sh
-git clone https://github.com/acshriv-alt/keel
-cd keel
+git clone https://github.com/acshriv-alt/scantling
+cd scantling
 sh install.sh /path/to/your/repo            # template + hooks + pointer
 sh install.sh /path/to/your/repo --skills   # also .claude/skills for Claude Code
 sh install.sh /path/to/your/repo --no-hooks # files only
@@ -29,19 +29,19 @@ it left alone.
 
 ## Path 3: manual
 
-Copy `template/` into the repository root. Run `sh keel/hooks/install.sh`.
-Add `Read KEEL.md first.` to your agent instruction file.
+Copy `template/` into the repository root. Run `sh scantling/hooks/install.sh`.
+Add `Read SCANTLING.md first.` to your agent instruction file.
 
 ## After install, in this order
 
 ### 1. Fill placeholders
 
-- `KEEL.md`: project name, and the "Project specifics" block (stack, branch
+- `SCANTLING.md`: project name, and the "Project specifics" block (stack, branch
   model, the three things a new agent always gets wrong here). Under 20 lines.
-- `keel/config.sh`: protected branches, audited branches, code path pattern,
+- `scantling/config.sh`: protected branches, audited branches, code path pattern,
   critical path pattern, check commands. Defaults are sensible for a
   `src/`-style repo with `main` as production.
-- `keel/council/personas/domain.md`: replace the placeholder paragraph with
+- `scantling/council/personas/domain.md`: replace the placeholder paragraph with
   your domain's laws, standards and incumbents.
 
 ### 2. Seed knowledge (the thirty minutes that matter)
@@ -59,8 +59,17 @@ Sit with whoever knows the project. Write:
 - **Personas, 2 to 4**: real users with their real devices and the moment
   they use the product.
 - **Scenarios**: import existing test scenarios if you have any. Keep their
-  IDs.
+  IDs. Put them in `scantling/scenarios/areas/AREA.md` and map each area's code
+  paths in `scantling/scenarios/AREAS.map`.
 - **Runbooks**: deploy, rollback, apply a migration, rotate a secret.
+- **Sources of record**: the one nobody wants to do and the one that costs
+  most to skip. For every doc that already tracks state, issues, releases or
+  standards, write `replaced`, `kept` or `deferred` into
+  `scantling/knowledge/SOURCES.md`. Replaced files get the archive banner and go
+  into `SCANTLING_ARCHIVED_PATTERN`, after which the hook refuses edits to them.
+  Then grep your `CLAUDE.md` or `AGENTS.md` for references to anything you
+  replaced: an instruction pointing at a frozen file is how a half-migration
+  teaches the next agent to write to the wrong place.
 
 ### 3. Write STATE.md
 
@@ -70,32 +79,41 @@ things, what is blocked, what happened last session.
 ### 4. First commit
 
 ```sh
-git add KEEL.md AGENTS.md keel .claude 2>/dev/null
-git commit -m "[keel] install Keel v1.0"
+git add SCANTLING.md AGENTS.md scantling .claude 2>/dev/null
+git commit -F - <<'EOF'
+[scantling] install Scantling v1.1
+
+Tier: trivial
+EOF
 ```
 
-The commit-msg hook is already live, so the tag is required. If the commit
-is refused, read the message: it says exactly what is missing.
+The commit-msg hook is already live, so the tag is required, and any commit
+touching code also needs a `Tier:` line. If the commit is refused, read the
+message: it says exactly what is missing.
+
+If this install also froze an existing doc, that one commit needs
+`SCANTLING_ARCHIVE_STAMP=1` in front of it, because it is the last commit allowed
+to touch the file it is archiving.
 
 ### 5. First push
 
 The pre-push hook wants an audit entry and a `STATE.md` change in the pushed
-range for audited branches. Append `A-0001` to `keel/audits/AUDIT-LOG.md`
-using `keel/templates/AUDIT.md`, commit `[keel] audit A-0001`, push. That
+range for audited branches. Append `A-0001` to `scantling/audits/AUDIT-LOG.md`
+using `scantling/templates/AUDIT.md`, commit `[scantling] audit A-0001`, push. That
 push is the first test of the gate.
 
 ## Existing projects with their own tracking docs
 
-Do not migrate content on day one. Link from `KEEL.md` to the existing
-handoff, release notes and issues list. New entries go to Keel. Move old
+Do not migrate content on day one. Link from `SCANTLING.md` to the existing
+handoff, release notes and issues list. New entries go to Scantling. Move old
 content when a file is next rewritten anyway. A worked plan is in
 `examples/adopters/BLOODKONNECT.md`.
 
 ## Existing git hooks
 
 If `core.hooksPath` is already set, the installer leaves it alone and tells
-you. Either move the old hooks' logic into `keel/hooks/*`, or add at the end
-of each Keel hook:
+you. Either move the old hooks' logic into `scantling/hooks/*`, or add at the end
+of each Scantling hook:
 
 ```sh
 [ -x "$ROOT/.githooks/pre-commit" ] && exec "$ROOT/.githooks/pre-commit" "$@"
@@ -113,8 +131,8 @@ for the repo and re-save the hook files with LF endings.
 
 ```sh
 git config --unset core.hooksPath
-git rm -r keel KEEL.md
+git rm -r scantling SCANTLING.md
 ```
 
-Remove the pointer line from your agent file. Keep `keel/decisions/` and
+Remove the pointer line from your agent file. Keep `scantling/decisions/` and
 `REJECTED.md` somewhere: they are the part that was worth having.

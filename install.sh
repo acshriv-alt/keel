@@ -1,5 +1,5 @@
 #!/bin/sh
-# Keel installer. Copies the template tree into a target repository without
+# Scantling installer. Copies the template tree into a target repository without
 # overwriting anything that already exists, installs the git hooks, and adds
 # the entry-point pointer to whatever agent instruction file the repo uses.
 #
@@ -8,7 +8,7 @@
 #   sh install.sh /path/to/repo --skills   also copy the Claude Code skills
 #   sh install.sh /path/to/repo --no-hooks copy files only, do not touch git config
 #
-# Run from a clone of the Keel repository. POSIX sh, works in Git Bash on Windows.
+# Run from a clone of the Scantling repository. POSIX sh, works in Git Bash on Windows.
 
 set -e
 
@@ -28,7 +28,7 @@ if [ -z "$TARGET" ] || [ ! -d "$TARGET" ]; then
   exit 1
 fi
 if ! git -C "$TARGET" rev-parse --show-toplevel >/dev/null 2>&1; then
-  echo "keel: $TARGET is not a git repository" >&2
+  echo "scantling: $TARGET is not a git repository" >&2
   exit 1
 fi
 TARGET=$(git -C "$TARGET" rev-parse --show-toplevel)
@@ -53,40 +53,48 @@ copy_tree() {
   done
 }
 
-echo "keel: installing into $TARGET"
+echo "scantling: installing into $TARGET"
 copy_tree "$HERE/template"
 
 # Pointer line for agent instruction files. Add to every one that exists;
 # AGENTS.md was created by the template if none existed.
-POINTER="Read KEEL.md first. It is the entry point for state, decisions and the push gates."
+POINTER="Read SCANTLING.md first. It is the entry point for state, decisions and the push gates."
 for f in CLAUDE.md AGENTS.md .cursorrules GEMINI.md .github/copilot-instructions.md; do
   p="$TARGET/$f"
   [ -f "$p" ] || continue
-  if ! grep -qF "Read KEEL.md first" "$p"; then
+  if ! grep -qF "Read SCANTLING.md first" "$p"; then
     printf '\n%s\n' "$POINTER" >> "$p"
     echo "  append pointer -> $f"
   fi
 done
 
 if [ "$HOOKS" = "1" ]; then
-  chmod +x "$TARGET"/keel/hooks/* 2>/dev/null || true
+  chmod +x "$TARGET"/scantling/hooks/* "$TARGET"/scantling/tools/*.sh 2>/dev/null || true
   existing=$(git -C "$TARGET" config --get core.hooksPath || true)
-  if [ -n "$existing" ] && [ "$existing" != "keel/hooks" ]; then
-    echo "keel: core.hooksPath is already '$existing'. Not changing it."
-    echo "keel: chain the old hooks from keel/hooks/* or move their logic, then run: git config core.hooksPath keel/hooks"
+  if [ -n "$existing" ] && [ "$existing" != "scantling/hooks" ]; then
+    echo "scantling: core.hooksPath is already '$existing'. Not changing it."
+    echo "scantling: chain the old hooks from scantling/hooks/* or move their logic, then run: git config core.hooksPath scantling/hooks"
   else
-    git -C "$TARGET" config core.hooksPath keel/hooks
-    echo "  hooks  core.hooksPath = keel/hooks"
+    git -C "$TARGET" config core.hooksPath scantling/hooks
+    echo "  hooks  core.hooksPath = scantling/hooks"
   fi
 fi
 
 cat <<EOF
 
-keel: done. Next:
-  1. Fill the {{PLACEHOLDERS}} in KEEL.md and keel/config.sh.
-  2. Seed keel/knowledge/CONSTRAINTS.md, REJECTED.md and keel/decisions/ with
+scantling: done. Next:
+  1. Fill the {{PLACEHOLDERS}} in SCANTLING.md and scantling/config.sh.
+  2. Seed scantling/knowledge/CONSTRAINTS.md, REJECTED.md and scantling/decisions/ with
      what you already know. Thirty minutes now saves every future session.
-  3. Write keel/STATE.md from the current branch.
-  4. git add KEEL.md AGENTS.md keel && git commit -m "[keel] install Keel"
-     (the commit-msg hook is already active: the [keel] tag is required)
+  3. Settle the system of record: fill scantling/knowledge/SOURCES.md. For every
+     doc that already tracks state, issues or releases, say replaced, kept or
+     deferred. Replaced files get the archive banner and go into
+     SCANTLING_ARCHIVED_PATTERN, after which the hook refuses edits to them.
+     Running two records is the most expensive state available.
+  4. Map the scenario areas in scantling/scenarios/AREAS.map, and create the
+     matching scantling/scenarios/areas/*.md files.
+  5. Write scantling/STATE.md from the current branch, inside 400 words.
+  6. git add SCANTLING.md AGENTS.md scantling && git commit -m "[scantling] install Scantling"
+     (the commit-msg hook is already active: the [scantling] tag is required, and
+     a commit touching code also needs a "Tier:" line in the body)
 EOF

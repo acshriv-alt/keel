@@ -1,0 +1,83 @@
+# Optional GitHub Action. Copy to .github/workflows/scantling-check.yml in your repo.
+#
+# Mirrors the pre-push hook for pull requests into protected branches, so the
+# gate holds even when someone pushes with --no-verify or from a machine
+# without the hooks. Adjust the branch list to match SCANTLING_PROTECTED_BRANCHES.
+
+name: scantling-check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  scantling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Audit entry and STATE.md present in this PR
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD")
+          echo "$CHANGED" | grep -q '^scantling/audits/AUDIT-LOG.md$' || { echo "scantling: no new audit entry in this PR"; exit 1; }
+          echo "$CHANGED" | grep -q '^scantling/STATE.md$' || { echo "scantling: scantling/STATE.md not updated in this PR"; exit 1; }
+
+      - name: Last audit entry targets this branch with Gate 2 PROCEED
+        run: |
+          BRANCH="${{ github.event.pull_request.base.ref }}"
+          LAST=$(awk '/^## A-/{b=""} {b=b $0 "\n"} END{printf "%s", b}' scantling/audits/AUDIT-LOG.md)
+          printf '%s' "$LAST" | grep -q "^Branch: $BRANCH" || { echo "scantling: last audit entry is not for $BRANCH"; exit 1; }
+          printf '%s' "$LAST" | grep -qE '^Gate 2: PROCEED' || { echo "scantling: last audit entry lacks 'Gate 2: PROCEED'"; exit 1; }
+          printf '%s' "$LAST" | grep -qE '^Reality-check: .{10,}' || { echo "scantling: last audit entry lacks a 'Reality-check:' line"; exit 1; }
+
+      - name: Audit log is archived, not unbounded
+        run: |
+          . ./scantling/config.sh
+          MAX=${SCANTLING_AUDIT_MAX_ENTRIES:-0}
+          if [ "$MAX" -gt 0 ]; then
+            N=$(grep -c '^## A-' scantling/audits/AUDIT-LOG.md || echo 0)
+            [ "$N" -le "$MAX" ] || { echo "scantling: AUDIT-LOG.md holds $N entries, max $MAX. Archive into scantling/audits/archive/."; exit 1; }
+          fi
+
+      - name: STATE.md within its word cap
+        run: |
+          . ./scantling/config.sh
+          CAP=${SCANTLING_STATE_MAX_WORDS:-0}
+          if [ "$CAP" -gt 0 ]; then
+            W=$(wc -w < scantling/STATE.md | tr -d ' ')
+            [ "$W" -le "$CAP" ] || { echo "scantling: scantling/STATE.md is $W words, cap $CAP."; exit 1; }
+          fi
+
+      - name: No edits to archived files
+        run: |
+          . ./scantling/config.sh
+          if [ -n "$SCANTLING_ARCHIVED_PATTERN" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            HITS=$(git diff --name-only "$BASE" "$HEAD" | grep -E "$SCANTLING_ARCHIVED_PATTERN" || true)
+            if [ -n "$HITS" ]; then echo "scantling: archived files edited:"; echo "$HITS"; exit 1; fi
+          fi
+
+      - name: Commit tags present
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          BAD=$(git log --format='%h %s' "$BASE..$HEAD" | grep -vE '\[(F-[0-9]{4}|fix|hotfix|chore|docs|scantling)\]' || true)
+          if [ -n "$BAD" ]; then echo "scantling: untagged commits:"; echo "$BAD"; exit 1; fi
+
+      - name: Every code-touching commit declares a tier
+        run: |
+          . ./scantling/config.sh
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          FAIL=0
+          for sha in $(git log --format=%H "$BASE..$HEAD"); do
+            git show --name-only --pretty=format: "$sha" | grep -qE "$SCANTLING_CODE_PATTERN" || continue
+            git log -1 --format=%B "$sha" | grep -qE '^Tier: (trivial|standard|critical)' || {
+              echo "scantling: $(git log -1 --format='%h %s' "$sha") touches code with no valid Tier: line"; FAIL=1; }
+          done
+          [ "$FAIL" = "0" ]

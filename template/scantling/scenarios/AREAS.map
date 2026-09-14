@@ -1,0 +1,7 @@
+# area   pattern (grep -E) matched against staged paths
+# A code path matching no line here forces an update to SCENARIOS.md,
+# which is how new paths get mapped instead of quietly escaping coverage.
+{{AUTH}}    {{^(lib/auth|app/api/auth|app/\(auth\))/}}
+{{REQ}}     {{^(app/request|lib/request|app/api/request)/}}
+{{NOTIF}}   {{^(lib/notify|app/api/notify)/}}
+{{DB}}      {{^db/}}
